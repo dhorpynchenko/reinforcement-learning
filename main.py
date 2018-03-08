@@ -32,16 +32,31 @@ def cem(f, th_mean, batch_size, n_iter, elite_frac, initial_std=1.0):
         yield {'ys': ys, 'theta_mean': th_mean, 'y_mean': ys.mean()}
 
 
+# Apply action of agent to environment and collects a reward
 def do_rollout(agent, env, num_steps, render=False):
     total_rew = 0
+    # ob is current observation
     ob = env.reset()
     for t in range(num_steps):
         a = agent.act(ob)
         (ob, reward, done, _info) = env.step(a)
         total_rew += reward
+        # Render every 3rd step
         if render and t % 3 == 0: env.render()
         if done: break
+        # Return total reward and step left
     return total_rew, t + 1
+
+
+def writefile(fname, s):
+    with open(path.join(outdir, fname), 'w') as fh: fh.write(s)
+
+
+# Evaluation of agent with coefficients
+def noisy_evaluation(theta):
+    agent = BinaryActionLinearPolicy(theta)
+    rew, T = do_rollout(agent, env, num_steps)
+    return rew
 
 
 if __name__ == '__main__':
@@ -55,44 +70,26 @@ if __name__ == '__main__':
     env = gym.make(args.target)
     env.seed(0)
     np.random.seed(0)
+    # Parameters for cem function
     params = dict(n_iter=10, batch_size=25, elite_frac=0.2)
+    # Number of steps while evaluating function parameters
     num_steps = 200
 
-    # You provide the directory to write to (can be an existing
-    # directory, but can't contain previous monitor results. You can
-    # also dump to a tempdir if you'd like: tempfile.mkdtemp().
     outdir = '/tmp/cem-agent-results'
-
 
     env = wrappers.Monitor(env, outdir, force=True)
 
-
-    # Prepare snapshotting
-    # ----------------------------------------
-    def writefile(fname, s):
-        with open(path.join(outdir, fname), 'w') as fh: fh.write(s)
-
-
-    info = {}
-    info['params'] = params
-    info['argv'] = sys.argv
-    info['env_id'] = env.spec.id
-
-
-    # ------------------------------------------
-
-    def noisy_evaluation(theta):
-        agent = BinaryActionLinearPolicy(theta)
-        rew, T = do_rollout(agent, env, num_steps)
-        return rew
-
+    # Info for writing into json
+    info = {'params': params, 'argv': sys.argv, 'env_id': env.spec.id}
 
     # Train the agent, and snapshot each stage
-    for (i, iterdata) in enumerate(
-            cem(noisy_evaluation, np.zeros(env.observation_space.shape[0] + 1), **params)):
+    for (i, iterdata) in enumerate(cem(noisy_evaluation, np.zeros(env.observation_space.shape[0] + 1), **params)):
         print('Iteration %2i. Episode mean reward: %7.3f' % (i, iterdata['y_mean']))
+        # Create agent with weight and bias coeficients
         agent = BinaryActionLinearPolicy(iterdata['theta_mean'])
+        # Display out results of training. 200 frames
         if args.display: do_rollout(agent, env, 200, render=True)
+        # Print current function coefficients values into file
         writefile('agent-%.4i.pkl' % i, str(pickle.dumps(agent, -1)))
 
     # Write out the env at the end so we store the parameters of this
