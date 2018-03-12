@@ -43,6 +43,9 @@ class Environment:
     def observation_space(self):
         return self.env.observation_space
 
+    def reward_range(self):
+        return self.env.reward_range
+
     def reset(self):
         return self.env.reset()
 
@@ -52,9 +55,10 @@ class Environment:
 
 class Agent:
 
-    def __init__(self, name, action_space):
+    def __init__(self, name, academy, action_space):
         self.action_space = action_space
         self.name = name
+        self.academy = academy
 
     def action(self, observation):
         pass
@@ -65,20 +69,19 @@ class Agent:
 
 class Academy:
 
-    def __init__(self, environment, save_folder="./AcademySave"):
-        self.env = environment
+    def __init__(self, save_folder="./AcademySave"):
         self.save_folder = save_folder
 
-    def random_agent(self):
-        return Academy.RandomAgent(self.env.action_space())
+    def random_agent(self, environment: Environment) -> Agent:
+        return Academy.RandomAgent(self, environment.action_space())
 
-    def nn_agent(self):
+    def nn_agent(self, environment: Environment) -> Agent:
         pass
 
-    def function_agent(self):
+    def function_agent(self, environment: Environment) -> Agent:
         pass
 
-    def save_agent_settings(self, agent, environment):
+    def save_agent_settings(self, agent: Agent, environment: Environment):
         pass
 
     class RandomAgent(Agent):
@@ -86,24 +89,24 @@ class Academy:
         Acts randomly
         """
 
-        def __init__(self, action_space):
-            super().__init__("random_agent", action_space)
+        def __init__(self, academy, action_space):
+            super().__init__("random_agent", academy, action_space)
 
         def action(self, observation):
             return self.action_space.sample()
 
     class FunctionAgent(Agent):
 
-        def __init__(self, action_space):
-            super().__init__("function_agent", action_space)
+        def __init__(self, academy, action_space):
+            super().__init__("function_agent", academy, action_space)
 
         def action(self, observation):
             pass
 
     class NNAgent(Agent):
 
-        def __init__(self, action_space):
-            super().__init__("nn_agent", action_space)
+        def __init__(self, academy, action_space):
+            super().__init__("nn_agent", academy, action_space)
 
         def action(self, observation):
             pass
@@ -114,7 +117,7 @@ class Couch:
     def __init__(self):
         pass
 
-    def train(self, environment, agent):
+    def train(self, environment: Environment, agent: Agent):
         agent.reset()
         for i_episode in range(20):
             print("Episode {}".format(i_episode))

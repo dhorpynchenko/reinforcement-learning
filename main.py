@@ -55,8 +55,8 @@ from definitions import *
 if __name__ == '__main__':
 
     env = Environment("MountainCar-v0", 0)
-    academy = Academy(env)
-    agent = academy.random_agent()
+    academy = Academy()
+    agent = academy.random_agent(env)
     couch = Couch()
 
     couch.train(env, agent)
