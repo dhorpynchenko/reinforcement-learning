@@ -1,4 +1,5 @@
-from definitions import *
+from environment import Environment
+from academy import Agent, Academy, Couch
 
 # def cem(f, th_mean, batch_size, n_iter, elite_frac, initial_std=1.0):
 #     """
@@ -54,13 +55,14 @@ from definitions import *
 
 if __name__ == '__main__':
 
-    env = Environment("MountainCar-v0", 0)
+    env = Environment.frozen_lake_env(0)
     academy = Academy()
-    agent = academy.random_agent(env)
+    agent = academy.table_method_agent(env)
     couch = Couch()
 
-    couch.train(env, agent)
-    academy.save_agent_settings(agent, env)
+    couch.train(env, agent, episodes=50000)
+    couch.validate(env, agent, episodes=100)
+    # academy.save_agent_settings(agent, env)
 
     env.close()
 
