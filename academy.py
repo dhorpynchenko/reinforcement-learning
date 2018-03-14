@@ -28,7 +28,16 @@ class Agent(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def teach(self, prev_observation, action, curr_observation, reward):
+    def teach_single(self, prev_observation, action, curr_observation, reward):
+        pass
+
+    @abstractmethod
+    def teach_survey(self, data):
+        """
+        Teach agent with data per episode
+        :param data: list with episode data.
+        data[0], data[2] - observation before and after action; data[1] - action, data[3] - reward
+        """
         pass
 
 
@@ -64,31 +73,34 @@ class Academy:
         Acts randomly
         """
 
-        def reset(self):
-            pass
-
-        def training_action(self, observation, progress):
-            pass
-
-        def teach(self, prev_observation, action, curr_observation, reward):
-            pass
-
         def __init__(self, academy, action_space):
             super().__init__("random_agent", academy, action_space)
+
+        def reset(self):
+            pass
 
         def action(self, observation):
             return self.action_space.sample()
 
-    class TableMethodAgent(Agent):
+        def training_action(self, observation, progress):
+            pass
 
-        def reset(self):
-            self.Q.fill(0)
+        def teach_single(self, prev_observation, action, curr_observation, reward):
+            pass
+
+        def teach_survey(self, data):
+            pass
+
+    class TableMethodAgent(Agent):
 
         def __init__(self, academy, observation_space, action_space):
             super().__init__("table_method_agent", academy, action_space)
             self.Q = np.zeros([observation_space.n, action_space.n])
             self.lr = .8
             self.y = .95
+
+        def reset(self):
+            self.Q.fill(0)
 
         def action(self, observation):
             return np.argmax(self.Q[observation, :])
@@ -97,37 +109,15 @@ class Academy:
             return np.argmax(
                 self.Q[observation, :] + np.random.randn(1, self.action_space.n) * (1. / (progress * 100 + 1)))
 
-        def teach(self, prev_observation, action, curr_observation, reward):
+        def teach_single(self, prev_observation, action, curr_observation, reward):
             self.Q[prev_observation, action] = self.Q[prev_observation, action] + self.lr * (
                     reward + self.y * np.max(self.Q[curr_observation, :]) - self.Q[prev_observation, action])
 
-    class FunctionAgent(Agent):
-
-        def reset(self):
-            pass
-
-        def training_action(self, observation, progress):
-            pass
-
-        def teach(self, prev_observation, action, curr_observation, reward):
-            pass
-
-        def __init__(self, academy, action_space):
-            super().__init__("function_agent", academy, action_space)
-
-        def action(self, observation):
-            pass
+        def teach_survey(self, data):
+            for item in data:
+                self.teach_single(item[0], item[1], item[2], item[3])
 
     class NNAgent(Agent):
-
-        def reset(self):
-            pass
-
-        def training_action(self, observation, progress):
-            return self.action(observation)
-
-        def teach(self, prev_observation, action, curr_observation, reward):
-            pass
 
         def __init__(self, academy, observation_space, action_space):
             super().__init__("nn_agent", academy, action_space)
@@ -147,29 +137,49 @@ class Academy:
         def action(self, observation):
             return self.action_space.sample()
 
+        def reset(self):
+            pass
+
+        def training_action(self, observation, progress):
+            return self.action(observation)
+
+        def teach_single(self, prev_observation, action, curr_observation, reward):
+            pass
+
+        def teach_survey(self, data):
+            pass
+
 
 class Couch:
 
     def __init__(self):
         pass
 
-    def train(self, environment: Environment, agent: Agent, episodes=1000, steps_per_episode=100):
+    def train(self, environment: Environment, agent: Agent, episodes=1000, steps_per_episode=100, train_episode=False):
         agent.reset()
-        all_rewards = []
+        # all_rewards = []
         for i_episode in range(episodes):
             print("Episode {}".format(i_episode))
             observation = environment.reset()
             episode_reward = 0.
+            episode_data = []
             for step in range(steps_per_episode):
                 action = agent.training_action(observation, i_episode / episodes)
                 curr_observation, reward, done, info = environment.step(action)
-                agent.teach(observation, action, curr_observation, reward)
+
+                if train_episode:
+                    episode_data.append((observation, action, curr_observation, reward))
+                else:
+                    agent.teach_single(observation, action, curr_observation, reward)
+
                 observation = curr_observation
                 episode_reward += reward
                 if done:
                     break
             print("Episode reward ", episode_reward)
-            all_rewards.append(episode_reward)
+            # all_rewards.append(episode_reward)
+            if train_episode:
+                agent.teach_survey(episode_data)
         # plt.plot(all_rewards)
         # plt.show()
 
