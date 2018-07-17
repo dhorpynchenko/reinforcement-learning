@@ -39,16 +39,16 @@ class Agent(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def teach_single(self, prev_observation, action, curr_observation, reward):
+    def teach_single(self, prev_observation, action, curr_observation, reward) -> (bool, float):
         pass
 
     @abstractmethod
-    def teach_survey(self, data) -> bool:
+    def teach_survey(self, data) -> (bool, float):
         """
         Teach agent with data per episode
         :param data: list with episode data.
         data[0], data[2] - observation before and after action; data[1] - action, data[3] - reward
-        :return True if algorithm converged, False otherwise
+        :return True if algorithm converged, False otherwise; cumulative loss
         """
         pass
 
@@ -70,8 +70,8 @@ class Academy:
     def table_method_agent(self, environment: Environment) -> Agent:
         return Academy.TableMethodAgent(self, environment.observation_space(), environment.action_space())
 
-    def nn_agent(self, environment: Environment) -> Agent:
-        return Academy.NNAgent(self, environment.observation_space(), environment.action_space())
+    def feed_forward_network_agent(self, environment: Environment) -> Agent:
+        return Academy.FeedForwardNetworkAgent(self, environment.observation_space(), environment.action_space())
 
     def save_agent_settings(self, agent: Agent, environment: Environment):
         env_save_folder = self._get_env_save_folder(environment)
@@ -144,6 +144,7 @@ class Academy:
             """ Maps an observation to state """
             env_low = self.obs_space_low
             env_high = self.obs_space_high
+            # TODO: fix var overflow
             env_dx = (env_high - env_low) / self.n_states
             result = []
             for i in range(len(obs)):
@@ -197,46 +198,136 @@ class Academy:
             q_prev = self.get_q_values_for_observation(self.prepare_observation(prev_observation))
             q_curr = self.get_q_values_for_observation(self.prepare_observation(curr_observation))
 
-            q_prev[action] = (1 - self.lr) * q_prev[action] + self.lr * (reward + self.gamma * np.max(q_curr))
+            update = (1 - self.lr) * q_prev[action] + self.lr * (reward + self.gamma * np.max(q_curr))
+            loss = (q_prev[action] - update) ** 2
+            q_prev[action] = update
+            return False, loss
 
         def teach_survey(self, data):
+            cumulative_loss = 0
+            has_finish = False
             for item in data:
-                self.teach_single(item[0], item[1], item[2], item[3])
+                finish, loss = self.teach_single(item[0], item[1], item[2], item[3])
+                cumulative_loss += loss
+                has_finish = True if has_finish or finish else False
+            return has_finish, cumulative_loss
 
-    class NNAgent(Agent):
+    class FeedForwardNetworkAgent(Agent):
+
+        eps = 0.02
 
         def __init__(self, academy, observation_space, action_space):
-            super().__init__("nn_agent", academy, action_space)
+            super().__init__("ffn_agent", academy, action_space)
 
-            action_amount = action_space.n
-            observation_size = observation_space.shape[0]
+            self.lr = .8
+            self.gamma = .95
 
-            # These lines establish the feed-forward part of the network used to choose actions
-            input1 = tf.placeholder(dtype=observation_space.dtype, shape=(1, observation_size))
-            W = tf.Variable(tf.random_uniform([observation_size, action_amount], 0, 0.01))
-            Qout = tf.sigmoid(tf.matmul(input1, W))
-            self.predict = tf.argmax(Qout, 1)
+            input_shape = []
+            if isinstance(observation_space, Box):
+                input_shape = observation_space.high.shape
+                self.obs_space_low = observation_space.low
+                self.obs_space_high = observation_space.high
 
-            # Below we obtain the loss by taking the sum of squares difference between the target and prediction Q values.
-            nextQ = tf.placeholder(shape=[1, action_amount], dtype=tf.float32)
-            loss = tf.reduce_sum(tf.square(nextQ - Qout))
-            trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
-            self.optimizer = trainer.minimize(loss)
+            # elif isinstance(observation_space, Discrete):
+            #
+            else:
+                raise RuntimeError("Input space size wasn't defined for type %s" % type(observation_space))
+
+            output_shape = action_space.n
+
+            # with tf.name_scope("input"):
+            i_shape = [1]
+            i_shape.extend(input_shape)
+            self.input = tf.placeholder(dtype=observation_space.dtype, shape=i_shape)
+
+            l1_out_shape = 10 * output_shape
+            w_shape = []
+            w_shape.extend(input_shape)
+            w_shape.append(l1_out_shape)
+
+            w1 = tf.get_variable("w1", shape=w_shape, initializer=tf.random_uniform_initializer)
+            b1 = tf.get_variable("b1", shape=[l1_out_shape], initializer=tf.random_uniform_initializer)
+
+            w2 = tf.get_variable("w2", shape=[l1_out_shape, output_shape], initializer=tf.random_uniform_initializer)
+            b2 = tf.get_variable("b2", shape=[output_shape], initializer=tf.random_uniform_initializer)
+
+            l1 = tf.sigmoid(tf.nn.xw_plus_b(self.input, w1, b1))
+            l_out = tf.sigmoid(tf.nn.xw_plus_b(l1, w2, b2))
+            self.q_state = l_out
+            self.q_sa_optimal = tf.argmax(self.q_state, 1)
+
+            self.q_state_updated = tf.placeholder(shape=[1, output_shape], dtype=tf.float32)
+            self.loss = tf.reduce_sum(tf.squared_difference(self.q_state_updated, self.q_state))
+            self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(self.loss)
+
+            self.sess = tf.Session()
+            self.saver = tf.train.Saver(var_list=[w1, b1, w2, b2])
+
+            self.reset()
+
+        def normalize_observation(self, obs):
+            env_low = self.obs_space_low
+            env_high = self.obs_space_high
+
+            env_range = env_high - env_low
+
+            result = []
+            for i in range(len(obs)):
+                result.append((obs[i] - env_low[i]) / env_range[i])
+
+            return result
 
         def action(self, observation):
-            return self.action_space.sample()
+            observation = self.normalize_observation(observation)
+            feed = {self.input: [observation]}
+
+            action = self.sess.run(self.q_sa_optimal, feed_dict=feed)
+            return action[0]
 
         def reset(self):
-            pass
+            self.sess.run(tf.global_variables_initializer())
 
         def training_action(self, observation, progress):
-            return self.action(observation)
+            if np.random.random() < (Academy.FeedForwardNetworkAgent.eps * (1 - progress)):
+                action = np.random.choice(self.action_space.n)
+                print("Random")
+            else:
+                action = self.action(observation)
+            return action
 
         def teach_single(self, prev_observation, action, curr_observation, reward):
-            pass
+
+            curr_observation = self.normalize_observation(curr_observation)
+            prev_observation = self.normalize_observation(prev_observation)
+            # q_prev[action] = (1 - self.lr) * q_prev[action] + self.lr * (reward + self.gamma * np.max(q_curr))
+            q_prev = self.sess.run(self.q_state, feed_dict={self.input: [prev_observation]})[0]
+            q_curr = self.sess.run(self.q_state, feed_dict={self.input: [curr_observation]})[0]
+
+            q_prev[action] = (1 - self.lr) * q_prev[action] + self.lr * (reward + self.gamma * np.max(q_curr))
+
+            loss, _ = self.sess.run([self.loss, self.optimizer],
+                                    feed_dict={self.input: [prev_observation], self.q_state_updated: [q_prev]})
+
+            return False, loss
 
         def teach_survey(self, data):
-            pass
+            cumulative_loss = 0
+            has_finish = False
+            for item in data:
+                finish, loss = self.teach_single(item[0], item[1], item[2], item[3])
+                cumulative_loss += loss
+                has_finish = True if has_finish or finish else False
+            return has_finish, cumulative_loss
+
+        def save(self, file):
+            self.saver.save(self.sess, file)
+
+        def restore(self, file) -> bool:
+            if file is not None and os.path.exists(file + ".meta"):
+                self.saver.restore(self.sess, file)
+                return True
+            else:
+                return False
 
 
 class Couch:
@@ -244,14 +335,16 @@ class Couch:
     def __init__(self):
         pass
 
-    def train(self, environment: Environment, agent: Agent, episodes=1000, steps_per_episode=201, train_episode=False):
+    def train(self, environment: Environment, agent: Agent, episodes=1000, steps_per_episode=199, train_episode=False):
         agent.reset()
         # all_rewards = []
         progress_bar = trange(episodes)
         for i_episode in progress_bar:
             observation = environment.reset()
             episode_reward = 0.
+            episode_loss = 0
             episode_data = []
+            step = 0
             for step in range(steps_per_episode):
                 action = agent.training_action(observation, i_episode / episodes)
                 curr_observation, reward, done, info = environment.step(action)
@@ -259,15 +352,20 @@ class Couch:
                 if train_episode:
                     episode_data.append((observation, action, curr_observation, reward))
                 else:
-                    agent.teach_single(observation, action, curr_observation, reward)
+                    result = agent.teach_single(observation, action, curr_observation, reward)
+                    episode_loss += result[1]
 
                 observation = curr_observation
                 episode_reward += reward
+                step += 1
                 if done:
                     break
-            progress_bar.set_description("Episode %s, reward per episode %s" % (i_episode, episode_reward))
             if train_episode:
-                agent.teach_survey(episode_data)
+                result = agent.teach_survey(episode_data)
+                episode_loss = result[1]
+
+            progress_bar.set_description(
+                "Reward per episode %s, cumul. loss %s" % (episode_reward, episode_loss / step))
 
     def validate(self, environment, agent, episodes=1000):
         all_rewards = []
@@ -289,7 +387,7 @@ class Couch:
         performance = len(success) / len(steps)
 
         plt.plot(all_rewards)
-        plt.title("Cumulative reward per game. Won {}% of games".format(performance* 100))
+        plt.title("Cumulative reward per game. Won {}% of games".format(performance * 100))
         plt.show()
 
         return performance

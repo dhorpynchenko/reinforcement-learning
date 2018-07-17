@@ -20,14 +20,11 @@ class Environment:
         :param name: name of gym environment
         :param render_fraction: percent of frames to render 0..1
         """
-        if render_fraction <= 0:
-            self._render_skip_frames = -1
-        else:
-            if render_fraction > 1:
-                render_fraction = 1
-            self._render_skip_frames = 1 // render_fraction - 1
-
+        # Init vars
+        self._render_skip_frames = 1
         self._render_frames_skipped = 0
+        self.set_render_fraction(render_fraction)
+
         self.name = name
         self.env = gym.make(name)
         self.env.seed(0)
@@ -37,6 +34,16 @@ class Environment:
         print("Action space ", self.env.action_space)
         print("Observable space ", self.env.observation_space)
         print("Reward bounds ", self.env.reward_range)
+
+    def set_render_fraction(self, render_fraction):
+        if render_fraction <= 0:
+            self._render_skip_frames = -1
+        else:
+            if render_fraction > 1:
+                render_fraction = 1
+            self._render_skip_frames = 1 // render_fraction - 1
+
+        self._render_frames_skipped = 0
 
     def step(self, action):
         result = self.env.step(action)
