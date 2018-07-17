@@ -11,6 +11,10 @@ class Environment:
     def mountain_car_env(render_fraction):
         return Environment("MountainCar-v0", render_fraction)
 
+    @staticmethod
+    def cart_pole(render_fraction):
+        return Environment("CartPole-v1", render_fraction)
+
     def __init__(self, name, render_fraction):
         """
         :param name: name of gym environment
@@ -29,6 +33,7 @@ class Environment:
         self.env.seed(0)
         gym.logger.set_level(gym.logger.INFO)
 
+        print("Creating environment %s" % name)
         print("Action space ", self.env.action_space)
         print("Observable space ", self.env.observation_space)
         print("Reward bounds ", self.env.reward_range)
@@ -58,3 +63,6 @@ class Environment:
 
     def close(self):
         self.env.close()
+
+    def is_won(self, total_steps, last_reward):
+        return total_steps < self.env._max_episode_steps

@@ -5,6 +5,7 @@ if __name__ == '__main__':
     env = Environment.frozen_lake_env(0)
     academy = Academy()
     agent = academy.table_method_agent(env)
+    restored = academy.restore_agent_settings(agent, env)
     couch = Couch()
 
     couch.train(env, agent, episodes=50000, train_episode=True)
