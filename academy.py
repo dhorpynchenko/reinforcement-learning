@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tqdm import trange
 from gym.spaces import Discrete, Box
+from sklearn.preprocessing import MinMaxScaler
 
 import utils
 from environment import Environment
@@ -39,11 +40,11 @@ class Agent(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def teach_single(self, prev_observation, action, curr_observation, reward) -> (bool, float):
+    def teach_single(self, prev_observation, action, curr_observation, reward, progress) -> (bool, float):
         pass
 
     @abstractmethod
-    def teach_survey(self, data) -> (bool, float):
+    def teach_survey(self, data, progress) -> (bool, float):
         """
         Teach agent with data per episode
         :param data: list with episode data.
@@ -71,7 +72,8 @@ class Academy:
         return Academy.TableMethodAgent(self, environment.observation_space(), environment.action_space())
 
     def feed_forward_network_agent(self, environment: Environment) -> Agent:
-        return Academy.FeedForwardNetworkAgent(self, environment.observation_space(), environment.action_space())
+        return Academy.FeedForwardNetworkAgent(self, environment.observation_space(), environment.action_space(),
+                                               self._get_env_save_folder(environment))
 
     def save_agent_settings(self, agent: Agent, environment: Environment):
         env_save_folder = self._get_env_save_folder(environment)
@@ -104,10 +106,10 @@ class Academy:
         def training_action(self, observation, progress):
             raise RuntimeError("Random agent can't be trained!")
 
-        def teach_single(self, prev_observation, action, curr_observation, reward):
+        def teach_single(self, prev_observation, action, curr_observation, reward, progress):
             pass
 
-        def teach_survey(self, data):
+        def teach_survey(self, data, progress):
             pass
 
     class TableMethodAgent(Agent):
@@ -194,7 +196,7 @@ class Academy:
             else:
                 return self.action(observation)
 
-        def teach_single(self, prev_observation, action, curr_observation, reward):
+        def teach_single(self, prev_observation, action, curr_observation, reward, progress):
             q_prev = self.get_q_values_for_observation(self.prepare_observation(prev_observation))
             q_curr = self.get_q_values_for_observation(self.prepare_observation(curr_observation))
 
@@ -203,11 +205,11 @@ class Academy:
             q_prev[action] = update
             return False, loss
 
-        def teach_survey(self, data):
+        def teach_survey(self, data, progress):
             cumulative_loss = 0
             has_finish = False
             for item in data:
-                finish, loss = self.teach_single(item[0], item[1], item[2], item[3])
+                finish, loss = self.teach_single(item[0], item[1], item[2], item[3], progress)
                 cumulative_loss += loss
                 has_finish = True if has_finish or finish else False
             return has_finish, cumulative_loss
@@ -216,7 +218,7 @@ class Academy:
 
         eps = 0.02
 
-        def __init__(self, academy, observation_space, action_space):
+        def __init__(self, academy, observation_space, action_space, log_dir):
             super().__init__("ffn_agent", academy, action_space)
 
             self.lr = .8
@@ -225,8 +227,8 @@ class Academy:
             input_shape = []
             if isinstance(observation_space, Box):
                 input_shape = observation_space.high.shape
-                self.obs_space_low = observation_space.low
-                self.obs_space_high = observation_space.high
+                self.scaler = MinMaxScaler()
+                self.scaler.fit([observation_space.low, observation_space.high])
 
             # elif isinstance(observation_space, Discrete):
             #
@@ -236,66 +238,79 @@ class Academy:
             output_shape = action_space.n
 
             # with tf.name_scope("input"):
-            i_shape = [1]
+            i_shape = [None]
             i_shape.extend(input_shape)
             self.input = tf.placeholder(dtype=observation_space.dtype, shape=i_shape)
 
-            l1_out_shape = 10 * output_shape
-            w_shape = []
-            w_shape.extend(input_shape)
-            w_shape.append(l1_out_shape)
+            hidden_size = 6
+            layer_shape = []
+            layer_shape.extend(input_shape)
+            layer_shape.append(hidden_size)
 
-            w1 = tf.get_variable("w1", shape=w_shape, initializer=tf.random_uniform_initializer)
-            b1 = tf.get_variable("b1", shape=[l1_out_shape], initializer=tf.random_uniform_initializer)
+            w1 = tf.get_variable("w1", shape=layer_shape, initializer=tf.random_uniform_initializer)
+            b1 = tf.get_variable("b1", shape=[hidden_size], initializer=tf.random_uniform_initializer)
 
-            w2 = tf.get_variable("w2", shape=[l1_out_shape, output_shape], initializer=tf.random_uniform_initializer)
+            self.variable_summaries(w1)
+            self.variable_summaries(b1)
+
+            w2 = tf.get_variable("w2", shape=[hidden_size, output_shape], initializer=tf.random_uniform_initializer)
             b2 = tf.get_variable("b2", shape=[output_shape], initializer=tf.random_uniform_initializer)
 
-            l1 = tf.sigmoid(tf.nn.xw_plus_b(self.input, w1, b1))
-            l_out = tf.sigmoid(tf.nn.xw_plus_b(l1, w2, b2))
-            self.q_state = l_out
-            self.q_sa_optimal = tf.argmax(self.q_state, 1)
+            self.variable_summaries(w2)
+            self.variable_summaries(b2)
 
-            self.q_state_updated = tf.placeholder(shape=[1, output_shape], dtype=tf.float32)
-            self.loss = tf.reduce_sum(tf.squared_difference(self.q_state_updated, self.q_state))
+            layer = tf.nn.xw_plus_b(self.input, w1, b1, "layer1")
+            tf.summary.histogram("layer1", layer)
+            # layer = tf.nn.dropout(layer, .5)
+            layer = tf.nn.xw_plus_b(layer, w2, b2, "layer2")
+            tf.summary.histogram("layer2", layer)
+            layer = tf.nn.sigmoid(layer, "activation2")
+            tf.summary.histogram("activation", layer)
+
+            self.q_state = layer
+            self.action_optimal = tf.argmax(self.q_state, 1, "optimal_action")
+
+            self.q_state_updated = tf.placeholder(shape=[None, output_shape], dtype=tf.float32)
+            self.loss = tf.squared_difference(self.q_state_updated, self.q_state)
+            tf.summary.histogram("squared diff", layer)
+            self.loss = tf.reduce_sum(self.loss)
+            tf.summary.histogram("loss", layer)
+            # self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.q_state_updated, logits=self.q_state))
             self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(self.loss)
 
             self.sess = tf.Session()
             self.saver = tf.train.Saver(var_list=[w1, b1, w2, b2])
 
+            self.summary = tf.summary.merge_all()
+            self.train_writer = tf.summary.FileWriter(log_dir + '/train', self.sess.graph)
+
             self.reset()
 
         def normalize_observation(self, obs):
-            env_low = self.obs_space_low
-            env_high = self.obs_space_high
-
-            env_range = env_high - env_low
-
-            result = []
-            for i in range(len(obs)):
-                result.append((obs[i] - env_low[i]) / env_range[i])
-
-            return result
+            obs = [obs]
+            obs = self.scaler.transform(obs)
+            return obs[0]
+            # return obs
 
         def action(self, observation):
             observation = self.normalize_observation(observation)
             feed = {self.input: [observation]}
 
-            action = self.sess.run(self.q_sa_optimal, feed_dict=feed)
+            action = self.sess.run(self.action_optimal, feed_dict=feed)
             return action[0]
 
         def reset(self):
             self.sess.run(tf.global_variables_initializer())
 
         def training_action(self, observation, progress):
+            progress = progress * 2 if progress < 0.5 else 1
             if np.random.random() < (Academy.FeedForwardNetworkAgent.eps * (1 - progress)):
                 action = np.random.choice(self.action_space.n)
-                print("Random")
             else:
                 action = self.action(observation)
             return action
 
-        def teach_single(self, prev_observation, action, curr_observation, reward):
+        def teach_single(self, prev_observation, action, curr_observation, reward, progress):
 
             curr_observation = self.normalize_observation(curr_observation)
             prev_observation = self.normalize_observation(prev_observation)
@@ -305,19 +320,35 @@ class Academy:
 
             q_prev[action] = (1 - self.lr) * q_prev[action] + self.lr * (reward + self.gamma * np.max(q_curr))
 
-            loss, _ = self.sess.run([self.loss, self.optimizer],
-                                    feed_dict={self.input: [prev_observation], self.q_state_updated: [q_prev]})
+            loss, _, summary = self.sess.run([self.loss, self.optimizer, self.summary],
+                                             feed_dict={self.input: [prev_observation], self.q_state_updated: [q_prev]})
+
+            self.train_writer.add_summary(summary, int(progress * 1000))
 
             return False, loss
 
-        def teach_survey(self, data):
-            cumulative_loss = 0
-            has_finish = False
-            for item in data:
-                finish, loss = self.teach_single(item[0], item[1], item[2], item[3])
-                cumulative_loss += loss
-                has_finish = True if has_finish or finish else False
-            return has_finish, cumulative_loss
+        def teach_survey(self, data, progress):
+
+            prev_observation = [self.normalize_observation(x[0]) for x in data]
+            curr_observation = [self.normalize_observation(x[2]) for x in data]
+            action = [x[1] for x in data]
+            reward = [x[3] for x in data]
+
+            q_prev = self.sess.run(self.q_state, feed_dict={self.input: prev_observation})
+            q_curr = self.sess.run(self.q_state, feed_dict={self.input: curr_observation})
+
+            for i in range(len(q_prev)):
+                before = q_prev[i][action[i]]
+                q_prev[i][action[i]] = (1 - self.lr) * q_prev[i][action[i]] + self.lr * (
+                        reward[i] + self.gamma * np.max(q_curr[i]))
+                after = q_prev[i][action[i]]
+
+            loss, _, summary = self.sess.run([self.loss, self.optimizer, self.summary],
+                                             feed_dict={self.input: prev_observation, self.q_state_updated: q_prev})
+
+            self.train_writer.add_summary(summary, int(progress * 1000))
+
+            return False, np.sum(loss)
 
         def save(self, file):
             self.saver.save(self.sess, file)
@@ -328,6 +359,18 @@ class Academy:
                 return True
             else:
                 return False
+
+        def variable_summaries(self, var):
+            """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+            with tf.name_scope('summaries'):
+                mean = tf.reduce_mean(var)
+                tf.summary.scalar('mean', mean)
+                with tf.name_scope('stddev'):
+                    stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+                tf.summary.scalar('stddev', stddev)
+                tf.summary.scalar('max', tf.reduce_max(var))
+                tf.summary.scalar('min', tf.reduce_min(var))
+                tf.summary.histogram('histogram', var)
 
 
 class Couch:
@@ -348,11 +391,12 @@ class Couch:
             for step in range(steps_per_episode):
                 action = agent.training_action(observation, i_episode / episodes)
                 curr_observation, reward, done, info = environment.step(action)
-
+                won = True if done and environment.is_won(step, reward) else False
+                reward = 100 if won else reward
                 if train_episode:
                     episode_data.append((observation, action, curr_observation, reward))
                 else:
-                    result = agent.teach_single(observation, action, curr_observation, reward)
+                    result = agent.teach_single(observation, action, curr_observation, reward, i_episode / episodes)
                     episode_loss += result[1]
 
                 observation = curr_observation
@@ -361,11 +405,10 @@ class Couch:
                 if done:
                     break
             if train_episode:
-                result = agent.teach_survey(episode_data)
+                result = agent.teach_survey(episode_data, i_episode / episodes)
                 episode_loss = result[1]
 
-            progress_bar.set_description(
-                "Reward per episode %s, cumul. loss %s" % (episode_reward, episode_loss / step))
+            progress_bar.set_description("Steps per episode %s, cumul. loss %s" % (step, episode_loss / step))
 
     def validate(self, environment, agent, episodes=1000):
         all_rewards = []

@@ -15,6 +15,10 @@ class Environment:
     def cart_pole(render_fraction):
         return Environment("CartPole-v1", render_fraction)
 
+    @staticmethod
+    def lunar_lander(render_fraction):
+        return Environment("LunarLander-v2", render_fraction)
+
     def __init__(self, name, render_fraction):
         """
         :param name: name of gym environment
