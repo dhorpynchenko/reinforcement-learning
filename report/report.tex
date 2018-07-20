@@ -66,9 +66,15 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Reinforcement learning}{}
-\subsection{Overview}
-\subsection{Marcov Decision Process}
+\section{Reinforcement learning}{
+
+}
+\subsection{Overview}{
+
+}
+\subsection{Marcov Decision Process}{
+
+}
 \subsection{Properties}{policy, value function, q function, optimal policy}
 \newpage
 \section{Project domain} 
@@ -84,13 +90,34 @@ The mountain car problem appeared first in Andrew Moore's PhD Thesis (1990). It 
 }
 \subsection{GYM library}{
 As a model of the domain was used GYM library (\url{https://gym.openai.com}), which contain list of environments such as classical "Inverted pendulum swing up" domain, "Atari" computer games, environments with physical world simulation.\par
-Each environment communicate with algorithm through observation, action and reward .}
-\subsection{Test domain specifications}
+Each environment communicate with algorithm through observation, action and reward . To process action and obtain new state observation agent must call step() function. As a result, environment returns a tuple with new state observation, reward receiver from environment and boolean episode termination value.
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[scale=0.5]{images/gym_env.png}
+\end{center}
+\caption{GYM environment}
+\label{gym_env}
+\end{figure}
+}
+\subsection{Domain specifications}
 \label{subsec:spec}{
-Output contains 2 continuous values of speed and acceleration in ranges [-0.7, 0.7] and [-0.7, 0.7] accordingly.\par
-Input is discrete action id A={0, 1, 2}, where 0 - no action, 1 - move back, 2 - move forward.\par
-To process action and obtain new state observation agent must call step() function. As a result, environment returns a tuple with new state observation, reward receiver from environment and boolean episode termination value.
-
+Each environment in GYM library has different data sizes. For the "Mounting Car" they are:\par
+\textit{Observations:} are contain of 2 continuous values of acceleration and speed:
+\begin{center}
+$O=\{Ac, Sp\}$,
+\end{center}
+where $Ac \in [-1.2, 0.6]$ and $Sp \in [-0.07, 0.07]$.\par
+\textit{Actions:} are discrete action ids:
+\begin{center}
+$A=\{0, 1, 2\}$,
+\end{center}
+where 0 - move back, 1 - no action, 2 - move forward.\par
+\textit{Rewards:} are floating point values. Each step, including terminal, gives -1.0 reward.\par
+\textit{Termination:} boolean value.
+\begin{center}
+$T=\{True, False\}$,
+\end{center}
+where $True$ - termination of episode due to reaching of the goal or taking \textit{200} steps in current episode.\par
 }
 
 \newpage

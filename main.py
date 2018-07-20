@@ -2,7 +2,7 @@ from environment import Environment
 from academy import Academy, Couch
 
 if __name__ == '__main__':
-    env = Environment.mountain_car_env(0)
+    env = Environment.mountain_car_env(1.0)
     academy = Academy()
     agent = academy.feed_forward_network_agent(env)
     # restored = academy.restore_agent_settings(agent, env)
