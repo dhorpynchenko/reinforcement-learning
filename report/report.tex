@@ -4,6 +4,7 @@
 \usepackage{url}
 \usepackage[utf8x]{inputenc}
 \usepackage{amsmath}
+\usepackage{amsfonts}
 \usepackage{color}
 \usepackage{graphicx}
 \graphicspath{{images/}}
@@ -12,7 +13,7 @@
 \usepackage{vmargin}
 \setmarginsrb{3 cm}{2.5 cm}{3 cm}{2.5 cm}{1 cm}{1.5 cm}{1 cm}{1.5 cm}
 
-\title{Resolving MDP domain problem using Q-learning algorithm with linear function approximation}			% Title
+\title{Resolving MDP domain problem using Q-learning algorithm}			% Title
 \author{Horpynchenko, Dmytro} 								% Author
 \date{\today}											% Date
 
@@ -66,16 +67,51 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Reinforcement learning}{
-
-}
+\section{Reinforcement learning}
 \subsection{Overview}{
-
+Learning is a process to improve the performance of a system based on its past experiences. \cite{hatem} This method occurs when the problem seems too complicated to solve in real time, that is, system mush collect some knowledge to produce a correct decision or behavior.\par
+The reinforcement learning (RL) is a technique which is to acquire the agent executor behavior desired by methods based on the concept of reward or punishment. \cite{hatem} For simplifying RL algorithms assumed that problem domain has Markov property, as such, it is Markov Decision Process.
 }
-\subsection{Marcov Decision Process}{
-
+\subsection{Markov Decision Process}{
+Markov decision process (MDP) is a discrete time stochastic control process. At each time step, the process is in some state \textit{s}, and the decision maker may choose any action \textit{s} that is available in state \textit{s}. The process responds at the next time step by randomly moving into a new state \textit{s'}, and giving the decision maker a corresponding reward  $R_a(s,s')$.The probability that the process moves into its new state \textit{s'} is influenced by the chosen action. Specifically, it is given by the state transition function $P_a(s,s')$. Thus, the next state \textit{s'} depends on the current state \textit{s} and the decision maker's action \textit{a}. \citep{wiki:mdp}
 }
-\subsection{Properties}{policy, value function, q function, optimal policy}
+\subsection{Properties}{
+A Markov decision process is a 5-tuple $(S,A,P_{a},R_{a},\gamma )$ \citep{wiki:mdp}, where
+\begin{itemize}
+\item \textit{S} is a finite set of states,
+\item \textit{A} is a finite set of actions (alternatively, $A_s$ is the finite set of actions available from state \textit{s}),
+\item $P_{a}(s,s')=\Pr(s_{t+1}=s'\mid s_{t}=s,a_{t}=a)$ is the probability that action \textit{a} in state \textit{s} at time \textit{t} will lead to state \textit{s'} at time \textit{t+1},
+\item $R_a(s,s')$ is the immediate reward (or expected immediate reward) received after transitioning from state \textit{s} to state \textit{s'}, due to action \textit{a},
+\item $\gamma \in [0,1]$ is the discount factor, which represents the difference in importance between future rewards and present rewards.
+\end{itemize}
+The agent's action selection is modeled as a map called \textit{policy}:
+\begin{center}
+$ \pi :S\times A\rightarrow [0,1]$\\
+$ \pi (a|s)=P(a_{t}=a|s_{t}=s)$
+\end{center}
+The policy map gives the probability of taking action \textit{a} when in state \textit{s}.\citep{wiki:mdp} \par
+\textit{Value function}  $ V_{\pi }(s)$ is defined as the expected return starting with state \textit{s}, i.e. $s_{0}=s$, and successively following policy $ \pi $. Hence, roughly speaking, the value function estimates "how good" it is to be in a given state.
+\begin{center}
+$ V_{\pi }(s)=E[R]=\textstyle E[\sum _{t=0}^{\infty }\gamma ^{t}r_{t}|s_{0}=s]$,
+\end{center}
+where the random variable \textit{R} denotes the return, and is defined as the sum of future discounted rewards
+\begin{center}
+$ R=\sum _{t=0}^{\infty }\gamma ^{t}r_{t}$,
+\end{center}
+
+where $r_{t}$ is the reward at step \textit{t}, $ \gamma \in [0,1]$ is the discount-rate.\citep{wiki:mdp}
+}
+\subsection{Q-learning algorithm}{
+Q-function or state-action utility function
+\begin{center}
+$Q:S \times A \to \mathbb{R}$
+\end{center}
+Q-function learning algorithm is one of the Temporal Difference learning algorithms (TD) that update state-action function iteratively until it represent all constraints of the domain.
+\begin{center}
+$Q(s, a) \rightarrow Q(s, a) + \alpha (R(s) + \gamma \max\limits_a Q(s', a') − Q(s, a))$,
+\end{center}
+where $R(s)$ - reward for moving to the state \textit{s}, $\gamma$ - future reward discounting factor, $\alpha$ - learning rate
+}
 \newpage
 \section{Project domain} 
 \subsection{Overview}{A car is on a one-dimensional track, positioned between two "mountains". The goal is to drive up the mountain on the right; however, the car's engine is not strong enough to scale the mountain in a single pass. Therefore, the only way to succeed is to drive back and forth to build up momentum (Figure~\ref{domain_image}).\par
@@ -102,11 +138,11 @@ Each environment communicate with algorithm through observation, action and rewa
 \subsection{Domain specifications}
 \label{subsec:spec}{
 Each environment in GYM library has different data sizes. For the "Mounting Car" they are:\par
-\textit{Observations:} are contain of 2 continuous values of acceleration and speed:
+\textit{Observations:} are contain of 2 continuous values of velocity and position:
 \begin{center}
-$O=\{Ac, Sp\}$,
+$O=\{Vel, Pos\}$,
 \end{center}
-where $Ac \in [-1.2, 0.6]$ and $Sp \in [-0.07, 0.07]$.\par
+where $Vel \in [-1.2, 0.6]$ and $Pos \in [-0.07, 0.07]$.\par
 \textit{Actions:} are discrete action ids:
 \begin{center}
 $A=\{0, 1, 2\}$,
@@ -122,20 +158,35 @@ where $True$ - termination of episode due to reaching of the goal or taking \tex
 
 \newpage
 \section{Implementation}
-\subsection{Project code structure}
+\subsection{Project code structure}{
+Code base consist of following classes:
+\begin{itemize}
+\item Environment
+\item Academy
+\item Agent
+\item Couch
+\end{itemize}
+}
 \subsection{Agents}
-\subsubsection{Random Agent}{For comparations and developmant purposes there was created agent that acts randomly.}
+\subsubsection{Random Agent}{For comparison and development purposes there was created agent that acts randomly.}
 \subsubsection{State-action table agent}{To determine value of Q-function for every state-action pair agent use a table of finite size.\par
 Since, as desribed in Section~\ref{subsec:spec}, domain has continuous output of speed and acceleration. Thus, observation received from domain discretized into natural numeric value in range [0, 40].\par
 In such a way, Q-values table has resulting size of 40x40x3 of floating point values.
-\subsubsection{Linear function approximation}
-\newpage
-\section{Results}
-\newpage
-\section{Conclusions}
+\subsubsection{Multi-layer perceptron}{
 
+}
+\newpage
+\section{Results}{
+
+}
+\newpage
+\section{Conclusions}{
+
+}
 \newpage
 \bibliographystyle{plain}
 \bibliography{biblist}
+
+
 
 \end{document}
