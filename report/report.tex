@@ -102,14 +102,17 @@ $ R=\sum _{t=0}^{\infty }\gamma ^{t}r_{t}$,
 where $r_{t}$ is the reward at step \textit{t}, $ \gamma \in [0,1]$ is the discount-rate.\citep{wiki:mdp}
 }
 \subsection{Q-learning algorithm}{
-Q-function or state-action utility function
+Q-function or state-action utility function provides a utility value for executing action \textit{a} in state \textit{s}:
 \begin{center}
 $Q:S \times A \to \mathbb{R}$
 \end{center}
+Agent that learns a Q-function does not need a model of the form $P(s | s, a)$, either for learning or for action selection. For this reason, Q-learning is called a model-free method.\par
 Q-function learning algorithm is one of the Temporal Difference learning algorithms (TD) that update state-action function iteratively until it represent all constraints of the domain.
-\begin{center}
-$Q(s, a) \rightarrow Q(s, a) + \alpha (R(s) + \gamma \max\limits_a Q(s', a') − Q(s, a))$,
-\end{center}
+\begin{equation} 
+\label{q_update}
+Q'(s, a) \rightarrow Q(s, a) + \alpha (R(s) + \gamma \max\limits_a Q(s', a') − Q(s, a)),
+\end{equation}
+
 where $R(s)$ - reward for moving to the state \textit{s}, $\gamma$ - future reward discounting factor, $\alpha$ - learning rate
 }
 \newpage
@@ -161,19 +164,34 @@ where $True$ - termination of episode due to reaching of the goal or taking \tex
 \subsection{Project code structure}{
 Code base consist of following classes:
 \begin{itemize}
-\item Environment
-\item Academy
-\item Agent
-\item Couch
+\item \textit{Environment} - wrapper class for GYM environment class
+\item \textit{Academy} - class responsible for properly instantiating agent instances, managing training logs, final model saving and restoring.
+\item \textit{Agent} - base class for RL agent implementation
+\item \textit{Couch} - class that provides methods to train and evaluate agent's performance in the domain
 \end{itemize}
 }
 \subsection{Agents}
 \subsubsection{Random Agent}{For comparison and development purposes there was created agent that acts randomly.}
-\subsubsection{State-action table agent}{To determine value of Q-function for every state-action pair agent use a table of finite size.\par
+\subsubsection{Look-up table agent}{
+To determine value of Q-function for every state-action pair agent use a table of finite size.\par
 Since, as desribed in Section~\ref{subsec:spec}, domain has continuous output of speed and acceleration. Thus, observation received from domain discretized into natural numeric value in range [0, 40].\par
 In such a way, Q-values table has resulting size of 40x40x3 of floating point values.
+}
 \subsubsection{Multi-layer perceptron}{
-
+Since domain state observation is continuous values Q-learning can be combined with function approximation. As solution Multi Layer Perceptron (MLP) architecture was selected. Figure~\ref{mlp_model} shows the approximation of the Q-function with MLP for Q-learning.\par
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[scale=0.3]{images/mlp_model.png}
+\label{mlp_model}
+\caption{Q-function approximation model using MLP architecture}
+\end{center}
+\end{figure}
+The learning is based on updating or adjusting the weight matrices of the Neural Network using the equation of the update of the classic algorithm of Q-learning and the algorithm Back propagation.\par
+Loss function is determined as squared difference between current state-action utility estimate and updated one:
+\begin{center}
+$Loss(s, a) = \frac{1}{2}(Q(s, a) - Q'(s, a))^2$,
+\end{center}
+where $Q'(s, a)$ - updated utility value according to (\ref{q_update}).
 }
 \newpage
 \section{Results}{
