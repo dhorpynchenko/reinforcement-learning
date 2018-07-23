@@ -1,7 +1,6 @@
 import os
 from abc import abstractmethod, ABCMeta
 
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tqdm import trange
@@ -69,7 +68,8 @@ class Academy:
         return Academy.RandomAgent(self, environment.action_space())
 
     def table_method_agent(self, environment: Environment) -> Agent:
-        return Academy.TableMethodAgent(self, environment.observation_space(), environment.action_space())
+        return Academy.TableMethodAgent(self, environment.observation_space(), environment.action_space(),
+                                        self._get_env_save_folder(environment))
 
     def feed_forward_network_agent(self, environment: Environment) -> Agent:
         return Academy.FeedForwardNetworkAgent(self, environment.observation_space(), environment.action_space(),
@@ -116,7 +116,7 @@ class Academy:
 
         eps = 0.02
 
-        def __init__(self, academy, observation_space, action_space):
+        def __init__(self, academy, observation_space, action_space, log_dir):
             super().__init__("table_method_agent", academy, action_space)
 
             if type(action_space) is not Discrete or not (isinstance(observation_space, (Discrete, Box))):
@@ -382,17 +382,18 @@ class Couch:
         agent.reset()
         # all_rewards = []
         progress_bar = trange(episodes)
+        results = []
+        per_step_validation = episodes // 100
         for i_episode in progress_bar:
             observation = environment.reset()
             episode_reward = 0.
             episode_loss = 0
             episode_data = []
-            step = 0
-            for step in range(steps_per_episode):
+            for i in range(steps_per_episode):
                 action = agent.training_action(observation, i_episode / episodes)
                 curr_observation, reward, done, info = environment.step(action)
-                won = True if done and environment.is_won(step, reward) else False
-                reward = 100 if won else reward
+                # won = True if done and environment.is_won(step, reward) else False
+                # reward = 100 if won else reward
                 if train_episode:
                     episode_data.append((observation, action, curr_observation, reward))
                 else:
@@ -401,14 +402,17 @@ class Couch:
 
                 observation = curr_observation
                 episode_reward += reward
-                step += 1
                 if done:
                     break
             if train_episode:
                 result = agent.teach_survey(episode_data, i_episode / episodes)
                 episode_loss = result[1]
 
-            progress_bar.set_description("Steps per episode %s, cumul. loss %s" % (step, episode_loss / step))
+            if i_episode % per_step_validation == 0:
+                perf, step = self.validate(environment, agent, episodes=10)
+                print("Did validation. Performance %s, steps %s" % (perf, str(step)))
+                results.append((perf, step))
+        return results
 
     def validate(self, environment, agent, episodes=1000):
         all_rewards = []
@@ -429,8 +433,4 @@ class Couch:
         success = [x for x in steps if environment.is_won(x, 0)]
         performance = len(success) / len(steps)
 
-        plt.plot(all_rewards)
-        plt.title("Cumulative reward per game. Won {}% of games".format(performance * 100))
-        plt.show()
-
-        return performance
+        return performance, steps

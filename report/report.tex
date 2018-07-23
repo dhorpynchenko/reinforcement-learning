@@ -113,7 +113,7 @@ Q-function learning algorithm is one of the Temporal Difference learning algorit
 Q'(s, a) \rightarrow Q(s, a) + \alpha (R(s) + \gamma \max\limits_a Q(s', a') − Q(s, a)),
 \end{equation}
 
-where $R(s)$ - reward for moving to the state \textit{s}, $\gamma$ - future reward discounting factor, $\alpha$ - learning rate
+where $R(s)$ - reward for moving to the state \textit{s}, $\gamma$ - future reward discounting factor, $\alpha$ - learning rate. \citep{wiki:q}
 }
 \newpage
 \section{Project domain} 
@@ -171,13 +171,15 @@ Code base consist of following classes:
 \end{itemize}
 }
 \subsection{Agents}
-\subsubsection{Random Agent}{For comparison and development purposes there was created agent that acts randomly.}
-\subsubsection{Look-up table agent}{
-To determine value of Q-function for every state-action pair agent use a table of finite size.\par
-Since, as desribed in Section~\ref{subsec:spec}, domain has continuous output of speed and acceleration. Thus, observation received from domain discretized into natural numeric value in range [0, 40].\par
+\subsubsection{Random Agent}{
+For comparison with other agents and development purposes there was created agent that acts randomly.
+}
+\subsubsection{Look-up table Agent}{
+To determine value of Q-function for every state-action pair agent use a table of a finite size.\par
+Since, as described in Section~\ref{subsec:spec}, domain state observation consist of 2 continuous variables. Thus, observation received from domain discretized into natural numeric value in range [0, 40].\par
 In such a way, Q-values table has resulting size of 40x40x3 of floating point values.
 }
-\subsubsection{Multi-layer perceptron}{
+\subsubsection{Function approximation Agent using Multi Layer Perceptron}{
 Since domain state observation is continuous values Q-learning can be combined with function approximation. As solution Multi Layer Perceptron (MLP) architecture was selected. Figure~\ref{mlp_model} shows the approximation of the Q-function with MLP for Q-learning.\par
 \begin{figure}[h!]
 \begin{center}
@@ -186,21 +188,52 @@ Since domain state observation is continuous values Q-learning can be combined w
 \caption{Q-function approximation model using MLP architecture}
 \end{center}
 \end{figure}
+\begin{itemize}
+\item Input layer - 2x6
+\item Output layer - 6x3
+\item Sigmoid activation function after final layer
+\item Argmax function over output vector to determine optimal policy.
+\end{itemize}
 The learning is based on updating or adjusting the weight matrices of the Neural Network using the equation of the update of the classic algorithm of Q-learning and the algorithm Back propagation.\par
 Loss function is determined as squared difference between current state-action utility estimate and updated one:
 \begin{center}
 $Loss(s, a) = \frac{1}{2}(Q(s, a) - Q'(s, a))^2$,
 \end{center}
-where $Q'(s, a)$ - updated utility value according to (\ref{q_update}).
-}
-\newpage
-\section{Results}{
+where $Q'(s, a)$ - updated utility value according to (\ref{q_update}).\par
+Described model was implemented in Python using Tensorflow computation library.
 
 }
 \newpage
-\section{Conclusions}{
-
+\section{Results and conclusions}{
+Conclusions about performance of agent's model were done by testing agent for 2 parameters:
+\begin{itemize}
+\item Average game score - amount of steps during episode to reach goal state.
+\item Convergence speed - amount of episodes after which agent's Average game score doesn't improve more than by 1\%.
+\end{itemize}
+Results:
+\begin{itemize}
+\item \textit{Random Agent}\par 
+Random Agent wasn't able to reach goal even once. It seams because of tremendous domain state space - two continuous input variables. Thus, probability of choosing acceptable sequence of action is so low that there are no chances for this type of agent to reach final state. 
+\item \textit{Q-table Agent}\par
+Training of look-up table based agent was done during 200000 episodes with learning rage $\alpha$=0.95. After around 7000 episodes agent start reaching goal state but only after 50000 episodes it was able to finish successfully in more than 50\% of iterations. Algorithm converged after around 155 thousands episodes and reached value of 86\% won episodes out of 100.
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[scale=0.4]{images/q_table_result.png}
+\caption{Smoothed average game score during training Q-table agent}
+\end{center}
+\end{figure}
+\item \textit{MLP Agent}\par 
+MLP agent was able to converge in less then 1000 iterations, reaching out up to 94\% of won episodes out of 100 tries.
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[scale=0.4]{images/mlp_result.png}
+\caption{Smoothed average game score during training MLP agent}
+\end{center}
+\end{figure}
+\end{itemize}
+In general Q-function learning algorithm show as robust and as pointed in \citep{q_conver} it always find optimal policy if it if exist but convergence speed depends of initial hyper-parameter values. MLP model agent over-performs look-up agent model in final game score and convergence speed with final 94\% of won games.
 }
+
 \newpage
 \bibliographystyle{plain}
 \bibliography{biblist}
