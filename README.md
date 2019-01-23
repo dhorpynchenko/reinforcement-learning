@@ -36,7 +36,7 @@ DQN agent:
 
         pip install -r requirements.txt
 
-2. Run training
+2. Run training. Use ```--r_train 0``` to run without rendering
     
         python main.py --agent mlp
 

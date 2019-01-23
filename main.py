@@ -6,7 +6,7 @@ from academy import Academy, Couch
 import matplotlib.pyplot as plt
 
 DEFAULT_EPISODES_MLP = 1000
-DEFAULT_EPISODES_TABLE = 200000
+DEFAULT_EPISODES_TABLE = 20000
 
 if __name__ == '__main__':
     # Parse command line arguments
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     #     print("Restored from save point")
 
     ep = 0
-    if args.episodes:
+    if args.episodes and args.episodes > 0:
         ep = args.episodes
     else:
         ep = DEFAULT_EPISODES_TABLE if args.agent == 'table' else DEFAULT_EPISODES_MLP
